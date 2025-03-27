@@ -42,3 +42,101 @@
         const canvas = document.getElementById("canvas");
         const ctx = canvas.getContext("2d");
         const micToggle = document.getElementById("mic-toggle");
+
+        let dots = [];  // Ensure dots is declared first
+        let audioStream = null;
+        const numDots = 700;
+        const radius = Math.min(window.innerWidth, window.innerHeight) / 3;
+        const centerX = window.innerWidth / 2;
+        const centerY = window.innerHeight * 0.9 / 2;
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight * 0.9;
+            setTimeout(generateDots, 100); // Ensure dots are generated after canvas is set
+        }
+
+        window.addEventListener("resize", resizeCanvas);
+        resizeCanvas();
+
+        function getRandomPosition() {
+            let r = Math.sqrt(Math.random()) * radius;
+            let theta = Math.random() * Math.PI * 2;
+            return {
+                x: centerX + r * Math.cos(theta),
+                y: centerY + r * Math.sin(theta),
+                baseX: centerX + r * Math.cos(theta),
+                baseY: centerY + r * Math.sin(theta),
+                size: 1.5
+            };
+        }
+
+        function generateDots() {
+            dots.length = 0; // Clear existing dots
+            for (let i = 0; i < numDots; i++) {
+                dots.push(getRandomPosition());
+            }
+            drawDots();
+        }
+
+        function drawDots() {
+            if (!dots.length) return; // Prevent errors if dots are not yet generated
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = "black";
+            dots.forEach(dot => {
+                ctx.beginPath();
+                ctx.arc(dot.x, dot.y, dot.size, 0, Math.PI * 2);
+                ctx.fill();
+            });
+        }
+
+        async function getAudio() {
+            try {
+                audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const analyser = audioContext.createAnalyser();
+                const source = audioContext.createMediaStreamSource(audioStream);
+                source.connect(analyser);
+                analyser.fftSize = 256;
+
+                const bufferLength = analyser.frequencyBinCount;
+                const dataArray = new Uint8Array(bufferLength);
+
+                function animate() {
+                    if (!dots.length) return; // Ensure dots exist before updating
+                    analyser.getByteFrequencyData(dataArray);
+                    let soundLevel = dataArray.reduce((a, b) => a + b, 0) / bufferLength;
+
+                    dots.forEach(dot => {
+                        let moveFactor = soundLevel * 0.05;
+                        dot.x = dot.baseX + moveFactor * (Math.random() - 0.5) * 5;
+                        dot.y = dot.baseY + moveFactor * (Math.random() - 0.5) * 5;
+                        dot.size = 1.5 + moveFactor * 0.1;
+                    });
+
+                    drawDots();
+                    if (audioStream) requestAnimationFrame(animate);
+                }
+
+                animate();
+                micToggle.innerText = "Disable Microphone";
+            } catch (error) {
+                alert("Microphone access denied. Please enable it in your browser settings.");
+                console.error("Microphone access denied", error);
+            }
+        }
+
+        micToggle.addEventListener("click", () => {
+            if (audioStream) {
+                audioStream.getTracks().forEach(track => track.stop());
+                audioStream = null;
+                micToggle.innerText = "Enable Microphone";
+            } else {
+                getAudio();
+            }
+        });
+
+        setTimeout(generateDots, 100); // Ensure dots initialize properly
+    </script>
+</body>
+</html>
